@@ -14,6 +14,7 @@ libraryDependencies ++= Seq(
   ws,
   specs2 % Test,
   "net.benmur" %% "riemann-scala-client" % "0.3.4"
+  , "com.strikead.utils" %% "metrics" % "0.4.1"
 )
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
