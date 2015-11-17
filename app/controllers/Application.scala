@@ -19,10 +19,12 @@ import java.net.InetSocketAddress
 
 import scala.util.Success
 
-class Application @Inject()(implicit system: ActorSystem, applicationLifecycle: ApplicationLifecycle) extends Controller {
-  val connections = 8
-  val quantisation = 20
-  val eventsPerSecond = 10000
+class Application @Inject()(implicit system: ActorSystem,
+                            config: Configuration,
+                            applicationLifecycle: ApplicationLifecycle) extends Controller {
+  val connections = config getInt "reimann.connections" getOrElse 8
+  val quantisation = config getInt "reimann.quantisation" getOrElse 20
+  val eventsPerSecond = config getInt "reimann.eventsPerSecond" getOrElse 10000
 
   val logger = Logger(getClass)
 
