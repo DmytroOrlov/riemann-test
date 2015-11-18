@@ -1,3 +1,6 @@
+# docker build --rm -t ubuntu:riemann-dash .
+# NAME=riemann-dash && docker run -d -p 4567:4567 --name $NAME ubuntu:$NAME
+
 FROM ruby
 
 ENV DASH_HOME /root/riemann-dash

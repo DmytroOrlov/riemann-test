@@ -1,6 +1,6 @@
 package controllers
 
-import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean}
+import java.util.concurrent.atomic.{AtomicInteger}
 import javax.inject.Inject
 
 import play.api._
@@ -22,13 +22,11 @@ import scala.util.Success
 class Application @Inject()(implicit system: ActorSystem,
                             config: Configuration,
                             applicationLifecycle: ApplicationLifecycle) extends Controller {
-  val connections = config getInt "reimann.connections" getOrElse 8
+  val eventsPerSecond = config.underlying getInt "reimann.eventsPerSecond"
+  val connections = config.underlying getInt "reimann.connections"
   val quantisation = config getInt "reimann.quantisation" getOrElse 20
-  val eventsPerSecond = config getInt "reimann.eventsPerSecond" getOrElse 10000
 
-  val logger = Logger(getClass)
-
-  implicit val timeout = Timeout(1.second)
+  implicit val timeout = Timeout((config.underlying getInt "reimann.timeout").seconds)
   implicit val ec = system.dispatcher
 
   val metricHost = ("127.0.0.1", 5555)
@@ -49,7 +47,7 @@ class Application @Inject()(implicit system: ActorSystem,
 
   private val tickActor = system.actorOf(Props(new Actor {
     val eventsPerTick = eventsPerSecond / quantisation / connections
-    require(eventsPerTick > 0, "eventsPerTick is too small, you should increase quantisation")
+    require(eventsPerTick > 0, "eventsPerTick must be > 0, decrease quantisation")
 
     def receive = {
       case Tick => pool set eventsPerTick
@@ -70,7 +68,7 @@ class Application @Inject()(implicit system: ActorSystem,
 
   def start(): Unit = {
     val period = 1000 / quantisation
-    require(period > 0, "period is too small, you should increase quantisation")
+    require(period > 0, "period must be > 0, decrease quantisation")
 
     scheduledAdder = Some(system.scheduler.schedule(
       1.second,
@@ -83,7 +81,7 @@ class Application @Inject()(implicit system: ActorSystem,
         if (pool.getAndDecrement() > 0)
           for (m <- metrics) logFailure(metricPart |>< m)
         else
-          Thread.sleep(1)
+          Thread sleep 10
     }
   }
 
