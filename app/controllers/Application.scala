@@ -1,6 +1,6 @@
 package controllers
 
-import java.util.concurrent.atomic.{AtomicInteger}
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
 import play.api._
@@ -14,7 +14,7 @@ import net.benmur.riemann.client.EventDSL._
 import akka.actor.{Cancellable, Actor, Props, ActorSystem}
 import akka.util.Timeout
 import scala.concurrent.Future
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt}
 import java.net.InetSocketAddress
 
 import scala.util.Success
@@ -24,7 +24,7 @@ class Application @Inject()(implicit system: ActorSystem,
                             applicationLifecycle: ApplicationLifecycle) extends Controller {
   val eventsPerSecond = config.underlying getInt "reimann.eventsPerSecond"
   val connections = config.underlying getInt "reimann.connections"
-  val quantisation = config getInt "reimann.quantisation" getOrElse 20
+  val quantisation = config getInt "reimann.quantisation" getOrElse 1
 
   implicit val timeout = Timeout((config.underlying getInt "reimann.timeout").seconds)
   implicit val ec = system.dispatcher
@@ -47,7 +47,7 @@ class Application @Inject()(implicit system: ActorSystem,
 
   private val tickActor = system.actorOf(Props(new Actor {
     val eventsPerTick = eventsPerSecond / quantisation / connections
-    require(eventsPerTick > 0, "eventsPerTick must be > 0, decrease quantisation")
+    require(eventsPerTick > 0, "eventsPerTick must be >= connections")
 
     def receive = {
       case Tick => pool set eventsPerTick
@@ -71,7 +71,7 @@ class Application @Inject()(implicit system: ActorSystem,
     require(period > 0, "period must be > 0, decrease quantisation")
 
     scheduledAdder = Some(system.scheduler.schedule(
-      1.second,
+      Duration.Zero,
       period.millis,
       tickActor,
       Tick
