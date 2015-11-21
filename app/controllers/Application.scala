@@ -1,6 +1,5 @@
 package controllers
 
-import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
 import play.api._
@@ -11,7 +10,7 @@ import net.benmur.riemann.client.ReliableIO._
 import net.benmur.riemann.client.EventSenderDSL._
 import net.benmur.riemann.client.EventDSL._
 
-import akka.actor.{Cancellable, Actor, Props, ActorSystem}
+import akka.actor.{Cancellable, ActorSystem}
 import akka.util.Timeout
 import scala.concurrent.Future
 import scala.concurrent.duration.{Duration, DurationInt}
@@ -22,42 +21,38 @@ import scala.util.Success
 class Application @Inject()(implicit system: ActorSystem,
                             config: Configuration,
                             applicationLifecycle: ApplicationLifecycle) extends Controller {
-  val eventsPerSecond = config.underlying getInt "reimann.eventsPerSecond"
-  val connections = config.underlying getInt "reimann.connections"
-  val quantisation = config getInt "reimann.quantisation" getOrElse 1
 
-  implicit val timeout = Timeout((config.underlying getInt "reimann.timeout").seconds)
+  import config.underlying
+
+  val eventsPerSecond = underlying getInt "reimann.eventsPerSecond"
+  val connections = underlying getInt "reimann.connections"
+  val quantisation = config getInt "reimann.quantisation" getOrElse 1
+  val riemannRemote = new InetSocketAddress(underlying getString "reimann.host", underlying getInt "reimann.port")
+
+  implicit val timeout = Timeout((underlying getInt "reimann.timeout").seconds)
   implicit val ec = system.dispatcher
 
-  val metricHost = ("127.0.0.1", 5555)
   val metrics = for (i <- 1 to connections)
-    yield riemannConnectAs[Reliable] to new InetSocketAddress(metricHost._1, metricHost._2)
-  val errorMetric = riemannConnectAs[Reliable] to new InetSocketAddress(metricHost._1, metricHost._2)
+    yield riemannConnectAs[Reliable] to riemannRemote
+  val errorMetric = riemannConnectAs[Reliable] to riemannRemote
 
   val metricPart = host("Dmytros-Mac-13") | service("service") | metric(1)
   val errorMetricPart = host("Dmytros-Mac-13") | service("service-metricFailure") | metric(1)
-
-  val pool = new AtomicInteger
 
   def index = Action {
     Ok("Ok")
   }
 
-  object Tick
+  val eventsPerTick = eventsPerSecond / quantisation / connections
+  require(eventsPerTick > 0, "eventsPerTick must be >= connections")
 
-  private val tickActor = system.actorOf(Props(new Actor {
-    val eventsPerTick = eventsPerSecond / quantisation / connections
-    require(eventsPerTick > 0, "eventsPerTick must be >= connections")
-
-    def receive = {
-      case Tick => pool set eventsPerTick
+  def sendMetricBatch() = for {
+    _ <- 1 to eventsPerTick
+    m <- metrics
+  } (metricPart |>< m).onComplete {
+      case Success(true) =>
+      case _ => errorMetricPart |>> errorMetric
     }
-  }))
-
-  def logFailure(f: Future[Boolean]): Unit = f.onComplete {
-    case Success(true) =>
-    case _ => errorMetricPart |>> errorMetric
-  }
 
   private var scheduledAdder: Option[Cancellable] = None
 
@@ -70,19 +65,7 @@ class Application @Inject()(implicit system: ActorSystem,
     val period = 1000 / quantisation
     require(period > 0, "period must be > 0, decrease quantisation")
 
-    scheduledAdder = Some(system.scheduler.schedule(
-      Duration.Zero,
-      period.millis,
-      tickActor,
-      Tick
-    ))
-    Future {
-      while (true)
-        if (pool.getAndDecrement() > 0)
-          for (m <- metrics) logFailure(metricPart |>< m)
-        else
-          Thread sleep 10
-    }
+    scheduledAdder = Some(system.scheduler.schedule(Duration.Zero, period.millis)(sendMetricBatch()))
   }
 
   applicationLifecycle.addStopHook(() => Future.successful(stop()))

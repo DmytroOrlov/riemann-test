@@ -8,16 +8,12 @@ scalaVersion := "2.11.7"
 
 resolvers += "clojars" at "http://clojars.org/repo"
 
-val akkaVersion = "2.4.0"
-
 libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
   specs2 % Test,
-  "net.benmur" %% "riemann-scala-client" % "0.3.4-1"
-, "com.typesafe.akka" %% "akka-actor" % akkaVersion
-, "com.typesafe.akka" %% "akka-slf4j" % akkaVersion
+  "net.benmur" %% "riemann-scala-client" % "0.3.4-SNAPSHOT"
 )
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
